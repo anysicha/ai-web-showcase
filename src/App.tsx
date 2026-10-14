@@ -356,7 +356,7 @@ export default function App() {
         <ProjectDetailModal
           isOpen={!!selectedProject}
           onClose={() => setSelectedProject(null)}
-          project={selectedProject}
+          project={projects.find((p) => p.id === selectedProject.id) ?? selectedProject}
           session={session}
           onOpenJoin={() => setIsJoinOpen(true)}
         />

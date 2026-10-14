@@ -140,7 +140,9 @@ export async function logoutUser(): Promise<void> {
 }
 
 /**
- * Listen to projects in class
+ * Listen to projects in class.
+ * Rating stats are computed from each project's reviews subcollection, since
+ * reviewers are not allowed (by Firestore rules) to write to others' project docs.
  */
 export function subscribeProjects(
   classId: string,
@@ -150,10 +152,29 @@ export function subscribeProjects(
   const collRef = collection(db, 'classes', classId, 'projects');
   const q = query(collRef, orderBy('createdAt', 'desc'));
 
-  return onSnapshot(
+  let baseProjects: Project[] = [];
+  const stats = new Map<string, { count: number; sum: number }>();
+  const reviewUnsubs = new Map<string, () => void>();
+
+  const emit = () => {
+    onUpdate(
+      baseProjects.map((p) => {
+        const st = stats.get(p.id);
+        if (!st) return p;
+        return {
+          ...p,
+          reviewCount: st.count,
+          ratingSum: st.sum,
+          averageRating: st.count > 0 ? Number((st.sum / st.count).toFixed(1)) : 0,
+        };
+      })
+    );
+  };
+
+  const unsubProjects = onSnapshot(
     q,
     (snapshot) => {
-      const projects: Project[] = snapshot.docs.map((d) => {
+      baseProjects = snapshot.docs.map((d) => {
         const data = d.data();
         return {
           id: d.id,
@@ -172,13 +193,45 @@ export function subscribeProjects(
           updatedAt: data.updatedAt || new Date().toISOString(),
         };
       });
-      onUpdate(projects);
+
+      const ids = new Set(baseProjects.map((p) => p.id));
+      for (const [id, unsub] of reviewUnsubs) {
+        if (!ids.has(id)) {
+          unsub();
+          reviewUnsubs.delete(id);
+          stats.delete(id);
+        }
+      }
+      for (const id of ids) {
+        if (reviewUnsubs.has(id)) continue;
+        const reviewsRef = collection(db, 'classes', classId, 'projects', id, 'reviews');
+        reviewUnsubs.set(
+          id,
+          onSnapshot(
+            reviewsRef,
+            (rs) => {
+              let sum = 0;
+              rs.docs.forEach((r) => (sum += Number(r.data().rating) || 0));
+              stats.set(id, { count: rs.size, sum });
+              emit();
+            },
+            (err) => console.error(err)
+          )
+        );
+      }
+      emit();
     },
     (error) => {
       if (onError) onError(error);
       handleFirestoreError(error, OperationType.GET, `classes/${classId}/projects`);
     }
   );
+
+  return () => {
+    unsubProjects();
+    reviewUnsubs.forEach((unsub) => unsub());
+    reviewUnsubs.clear();
+  };
 }
 
 /**
@@ -349,27 +402,6 @@ export async function submitPeerReview(
       const existingReviewSnap = await tx.get(reviewRef);
       const isUpdate = existingReviewSnap.exists();
 
-      let newCount = projData.reviewCount || 0;
-      let newSum = projData.ratingSum || 0;
-
-      if (isUpdate) {
-        const oldRating = existingReviewSnap.data()?.rating || 0;
-        newSum = newSum - oldRating + roundedRating;
-      } else {
-        newCount += 1;
-        newSum += roundedRating;
-      }
-
-      const newAvg = newCount > 0 ? Number((newSum / newCount).toFixed(1)) : 0;
-
-      // Update project statistics
-      tx.update(projectRef, {
-        reviewCount: newCount,
-        ratingSum: newSum,
-        averageRating: newAvg,
-        updatedAt: now,
-      });
-
       // Write review document
       tx.set(
         reviewRef,
@@ -398,34 +430,10 @@ export async function deletePeerReview(
   projectId: string,
   reviewId: string
 ): Promise<void> {
-  const projectRef = doc(db, 'classes', classId, 'projects', projectId);
   const reviewRef = doc(db, 'classes', classId, 'projects', projectId, 'reviews', reviewId);
 
   try {
-    await runTransaction(db, async (tx) => {
-      const reviewSnap = await tx.get(reviewRef);
-      if (!reviewSnap.exists()) return;
-      const reviewData = reviewSnap.data();
-
-      const projSnap = await tx.get(projectRef);
-      if (projSnap.exists()) {
-        const projData = projSnap.data();
-        const oldSum = projData.ratingSum || 0;
-        const oldCount = projData.reviewCount || 0;
-        const newCount = Math.max(0, oldCount - 1);
-        const newSum = Math.max(0, oldSum - (reviewData.rating || 0));
-        const newAvg = newCount > 0 ? Number((newSum / newCount).toFixed(1)) : 0;
-
-        tx.update(projectRef, {
-          reviewCount: newCount,
-          ratingSum: newSum,
-          averageRating: newAvg,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      tx.delete(reviewRef);
-    });
+    await deleteDoc(reviewRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `classes/${classId}/projects/${projectId}/reviews/${reviewId}`);
   }
