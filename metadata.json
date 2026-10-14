@@ -1,0 +1,6 @@
+{
+  "name": "AI 웹앱 전시관",
+  "description": "AI 바이브 코딩 수업 수강생을 위한 웹앱 포트폴리오 전시 및 상호 평가 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

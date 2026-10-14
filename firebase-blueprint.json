@@ -1,0 +1,234 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Instructor administrator profile with elevated permissions",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Instructor email address",
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "description": "Admin role identifier",
+          "enum": ["admin", "superadmin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of admin registration"
+        }
+      },
+      "required": ["email", "role"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "AI Vibe Coding class session created by instructor",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the class",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "Summary or purpose of the class exhibition",
+          "maxLength": 300
+        },
+        "instructorUid": {
+          "type": "string",
+          "description": "UID of the instructor who created the class",
+          "maxLength": 128
+        },
+        "instructorEmail": {
+          "type": "string",
+          "description": "Email of instructor",
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the class",
+          "enum": ["active", "closed"]
+        },
+        "codeHash": {
+          "type": "string",
+          "description": "Salted SHA-256 hash of the join code",
+          "maxLength": 128
+        },
+        "codeSalt": {
+          "type": "string",
+          "description": "Salt used for code hashing",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of class creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of class update"
+        }
+      },
+      "required": ["name", "instructorUid", "status"]
+    },
+    "ClassMember": {
+      "title": "ClassMember",
+      "description": "Student or instructor participating in a class",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128
+        },
+        "nickname": {
+          "type": "string",
+          "description": "Nickname used in the class exhibition",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "role": {
+          "type": "string",
+          "description": "Role in the class",
+          "enum": ["student", "instructor"]
+        },
+        "joinedAt": {
+          "type": "string",
+          "description": "Timestamp when joined"
+        }
+      },
+      "required": ["uid", "nickname", "role"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Web app submitted by a student for peer review",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the AI web application",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "description": "Short one-line description of the web app",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "appUrl": {
+          "type": "string",
+          "description": "Accessible web application URL",
+          "pattern": "^https?://.*",
+          "maxLength": 500
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the student author",
+          "maxLength": 128
+        },
+        "authorNickname": {
+          "type": "string",
+          "description": "Nickname of the student author",
+          "maxLength": 30
+        },
+        "aiTools": {
+          "type": "array",
+          "description": "List of AI tools and models utilized"
+        },
+        "promptTip": {
+          "type": "string",
+          "description": "Key prompt technique or vibe coding tip used",
+          "maxLength": 500
+        },
+        "reviewCount": {
+          "type": "number",
+          "description": "Total number of peer reviews received"
+        },
+        "ratingSum": {
+          "type": "number",
+          "description": "Sum of all ratings received"
+        },
+        "averageRating": {
+          "type": "number",
+          "description": "Average review score (1.0 to 5.0)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of last update"
+        }
+      },
+      "required": ["title", "description", "appUrl", "authorUid", "authorNickname"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Peer rating and constructive comment on a project",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "description": "ID of the reviewed project",
+          "maxLength": 128
+        },
+        "reviewerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the reviewer",
+          "maxLength": 128
+        },
+        "reviewerNickname": {
+          "type": "string",
+          "description": "Nickname of the reviewer",
+          "maxLength": 30
+        },
+        "rating": {
+          "type": "integer",
+          "description": "Integer star rating from 1 to 5"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Review comment and constructive feedback",
+          "minLength": 2,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of review creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of review update"
+        }
+      },
+      "required": ["projectId", "reviewerUid", "reviewerNickname", "rating", "comment"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Authorized instructor administrators"
+    },
+    "/classes/{classId}": {
+      "schema": "Class",
+      "description": "Class sessions created by instructors"
+    },
+    "/classes/{classId}/members/{memberId}": {
+      "schema": "ClassMember",
+      "description": "Members enrolled in the class"
+    },
+    "/classes/{classId}/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Student web app showcase submissions"
+    },
+    "/classes/{classId}/projects/{projectId}/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Peer reviews and evaluations for a project"
+    }
+  }
+}

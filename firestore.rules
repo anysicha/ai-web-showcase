@@ -1,0 +1,132 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email != null && request.auth.token.email == 'anysicha123@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isClassMember(classId) {
+      return isSignedIn() && (
+        isAdmin() ||
+        exists(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid))
+      );
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['title', 'description', 'appUrl', 'authorUid', 'authorNickname']) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 60 &&
+        data.description is string && data.description.size() >= 5 && data.description.size() <= 200 &&
+        data.appUrl is string && data.appUrl.size() <= 500 && data.appUrl.matches('^https?://.+') &&
+        data.authorUid is string && data.authorUid.size() <= 128 &&
+        data.authorNickname is string && data.authorNickname.size() >= 1 && data.authorNickname.size() <= 30 &&
+        (!('promptTip' in data) || (data.promptTip is string && data.promptTip.size() <= 500)) &&
+        (!('aiTools' in data) || (data.aiTools is list && data.aiTools.size() <= 10));
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['projectId', 'reviewerUid', 'reviewerNickname', 'rating', 'comment']) &&
+        data.projectId is string && data.projectId.size() <= 128 &&
+        data.reviewerUid is string && data.reviewerUid.size() <= 128 &&
+        data.reviewerNickname is string && data.reviewerNickname.size() >= 1 && data.reviewerNickname.size() <= 30 &&
+        data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+        data.comment is string && data.comment.size() >= 2 && data.comment.size() <= 300;
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Classes collection
+    match /classes/{classId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+
+      // Class Members subcollection
+      match /members/{memberId} {
+        allow get: if isSignedIn();
+        allow list: if isSignedIn();
+        allow create: if isSignedIn() && (
+          memberId == request.auth.uid || isAdmin()
+        ) && incoming().uid == memberId;
+        allow update: if isAdmin();
+        allow delete: if isAdmin() || (isSignedIn() && memberId == request.auth.uid);
+      }
+
+      // Class Projects subcollection
+      match /projects/{projectId} {
+        allow get: if isClassMember(classId);
+        allow list: if isClassMember(classId);
+        allow create: if isClassMember(classId) &&
+          isValidProject(incoming()) &&
+          incoming().authorUid == request.auth.uid &&
+          (projectId == request.auth.uid || projectId == ('p_' + request.auth.uid));
+        allow update: if isClassMember(classId) && (
+          isAdmin() ||
+          (
+            existing().authorUid == request.auth.uid &&
+            incoming().authorUid == existing().authorUid &&
+            isValidProject(incoming())
+          )
+        );
+        allow delete: if isClassMember(classId) && (
+          isAdmin() ||
+          existing().authorUid == request.auth.uid
+        );
+
+        // Reviews subcollection
+        match /reviews/{reviewId} {
+          allow get: if isClassMember(classId);
+          allow list: if isClassMember(classId);
+          allow create: if isClassMember(classId) &&
+            isValidReview(incoming()) &&
+            incoming().reviewerUid == request.auth.uid &&
+            reviewId == request.auth.uid &&
+            get(/databases/$(database)/documents/classes/$(classId)/projects/$(projectId)).data.authorUid != request.auth.uid;
+          allow update: if isClassMember(classId) && (
+            isAdmin() ||
+            (
+              existing().reviewerUid == request.auth.uid &&
+              incoming().reviewerUid == existing().reviewerUid &&
+              isValidReview(incoming())
+            )
+          );
+          allow delete: if isClassMember(classId) && (
+            isAdmin() ||
+            existing().reviewerUid == request.auth.uid
+          );
+        }
+      }
+    }
+  }
+}
